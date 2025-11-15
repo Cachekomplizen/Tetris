@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<title>Gepäck-Tetris (Desktop + Touch)</title>
+<style>
+  body { margin:0; display:flex; justify-content:center; align-items:center; height:100vh; background:#f0f0f0; font-family:sans-serif; }
+  canvas { background:#222; display:block; }
+  #popup {
+    display:none;
+    position:fixed;
+    top:50%;
+    left:50%;
+    transform:translate(-50%, -50%);
+    background:white;
+    padding:20px;
+    border-radius:10px;
+    box-shadow:0 0 10px rgba(0,0,0,0.5);
+    font-size:18px;
+    text-align:center;
+    max-width:90%;
+    z-index:10;
+  }
+</style>
+</head>
+<body>
+<canvas id="game" tabindex="0"></canvas>
+<div id="popup">
+  Super, alle Gepäckstücke sind verstaut, jetzt kann es losgehen.<br>
+  Begib dich zur Boardingtreppe bei:<br>
+  N 52° 31.XXX und E13° 31.YYY
+</div>
+
+<script>
+const canvas = document.getElementById('game');
+canvas.focus(); // Fokus für Tastatur
+const ctx = canvas.getContext('2d');
+
+let scale, rows, cols, grid;
+function resizeCanvas(){
+  canvas.width = Math.min(window.innerWidth*0.9, 300);
+  canvas.height = Math.min(window.innerHeight*0.8, 500);
+  scale = Math.floor(canvas.width / 12); // ca. 12 Blöcke breit
+  rows = Math.floor(canvas.height / scale);
+  cols = 12;
+  grid = Array.from({length: rows}, () => Array(cols).fill(0));
+}
+resizeCanvas();
+window.addEventListener('resize', resizeCanvas);
+
+// Blöcke
+const pieces = [
+  [[1,1,1,1]], [[1,1],[1,1]], [[0,1,0],[1,1,1]], [[1,1,0],[0,1,1]], [[0,1,1],[1,1,0]]
+];
+
+function randomPiece() { 
+  const shape = pieces[Math.floor(Math.random()*pieces.length)];
+  return {shape, x: Math.floor(cols/2 - shape[0].length/2), y: 0};
+}
+
+let current = randomPiece();
+
+function draw(){
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  for(let r=0;r<rows;r++){
+    for(let c=0;c<cols;c++){
+      if(grid[r][c]) drawLuggage(c*scale,r*scale,"orange");
+    }
+  }
+  for(let r=0;r<current.shape.length;r++){
+    for(let c=0;c<current.shape[r].length;c++){
+      if(current.shape[r][c]){
+        const colors = ["#FF5733","#33FF57","#3357FF","#F3FF33","#FF33F6"];
+        const color = colors[pieces.indexOf(current.shape) % colors.length] || "#FF0000";
+        drawLuggage((current.x+c)*scale,(current.y+r)*scale,color);
+      }
+    }
+  }
+}
+
+function drawLuggage(x,y,color){
+  const radius = 4;
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.moveTo(x + radius, y);
+  ctx.lineTo(x + scale - radius, y);
+  ctx.quadraticCurveTo(x + scale, y, x + scale, y + radius);
+  ctx.lineTo(x + scale, y + scale - radius);
+  ctx.quadraticCurveTo(x + scale, y + scale, x + scale - radius, y + scale);
+  ctx.lineTo(x + radius, y + scale);
+  ctx.quadraticCurveTo(x, y + scale, x, y + scale - radius);
+  ctx.lineTo(x, y + radius);
+  ctx.quadraticCurveTo(x, y, x + radius, y);
+  ctx.fill();
+  ctx.strokeStyle = "#333";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(x + scale*0.25, y + scale*0.2);
+  ctx.lineTo(x + scale*0.75, y + scale*0.2);
+  ctx.stroke();
+}
+
+function collide(){
+  for(let r=0;r<current.shape.length;r++){
+    for(let c=0;c<current.shape[r].length;c++){
+      if(current.shape[r][c] && (grid[current.y+r] && grid[current.y+r][current.x+c]) !== 0) return true;
+    }
+  }
+  return false;
+}
+
+function merge(){
+  for(let r=0;r<current.shape.length;r++){
+    for(let c=0;c<current.shape[r].length;c++){
+      if(current.shape[r][c]) grid[current.y+r][current.x+c]=1;
+    }
+  }
+}
+
+function sweep(){
+  for(let r=rows-1;r>=0;r--){
+    if(grid[r].every(cell=>cell!==0)){
+      grid.splice(r,1);
+      grid.unshift(Array(cols).fill(0));
+    }
+  }
+}
+
+function rotate(piece){
+  const shape = piece.shape;
+  const n = shape.length;
+  const m = shape[0].length;
+  const newShape = [];
+  for(let c=0;c<m;c++){
+    newShape[c]=[];
+    for(let r=n-1;r>=0;r--){
+      newShape[c][n-1-r]=shape[r][c];
+    }
+  }
+  piece.shape = newShape;
+  if(collide()) piece.shape=shape;
+}
+
+// Tastatursteuerung
+document.addEventListener('keydown', e=>{
+  canvas.focus();
+  if(e.key==='ArrowLeft'){ current.x--; if(collide()) current.x++; }
+  if(e.key==='ArrowRight'){ current.x++; if(collide()) current.x--; }
+  if(e.key==='ArrowDown'){ current.y++; if(collide()){ current.y--; merge(); current = randomPiece(); sweep(); } }
+  if(e.key==='ArrowUp'){ rotate(current); }
+});
+
+// Touchsteuerung
+let touchStartX=0, touchStartY=0;
+canvas.addEventListener('touchstart', e=>{
+  const touch=e.touches[0];
+  touchStartX=touch.clientX;
+  touchStartY=touch.clientY;
+});
+canvas.addEventListener('touchend', e=>{
+  const touch=e.changedTouches[0];
+  const dx=touch.clientX-touchStartX;
+  const dy=touch.clientY-touchStartY;
+  if(Math.abs(dx)<10 && Math.abs(dy)<10){ rotate(current); return; }
+  if(Math.abs(dx)>Math.abs(dy)){
+    if(dx>20){ current.x++; if(collide()) current.x--; }
+    else if(dx<-20){ current.x--; if(collide()) current.x++; }
+  } else {
+    if(dy>20){ current.y++; if(collide()){ current.y--; merge(); current = randomPiece(); sweep(); } }
+  }
+});
+
+// Spiel-Loop
+function update(){
+  current.y++;
+  if(collide()){ current.y--; merge(); current=randomPiece(); sweep(); }
+  draw();
+}
+let gameInterval=setInterval(update,500);
+
+// 1-Minuten-Popup
+setTimeout(()=>{
+  clearInterval(gameInterval);
+  document.getElementById("popup").style.display="block";
+},1*60*1000);
+
+document.getElementById("popup").addEventListener("click", ()=>{
+  document.getElementById("popup").style.display="none";
+});
+</script>
+</body>
+</html>
