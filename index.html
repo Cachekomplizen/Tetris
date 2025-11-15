@@ -1,267 +1,296 @@
 <!DOCTYPE html>
 <html lang="de">
 <head>
-<meta charset="UTF-8">
-<title>Gepäck-Tetris Flughafen Edition</title>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Koffer-Tetris</title>
 <style>
-  body { margin:0; display:flex; justify-content:center; align-items:center; height:100vh; background:#87ceeb; font-family:sans-serif; flex-direction:column; }
-  canvas { background:#222; display:block; touch-action: none; margin-top:40px; }
-  #hint {
-    position:fixed;
-    top:10px;
-    left:50%;
-    transform:translateX(-50%);
-    background:rgba(255,255,255,0.8);
-    padding:5px 10px;
-    border-radius:5px;
-    font-size:16px;
-    font-weight:bold;
-    z-index:10;
-  }
-  #popup {
-    display:none;
-    position:fixed;
-    top:50%;
-    left:50%;
-    transform:translate(-50%, -50%);
-    background:white;
-    padding:20px;
-    border-radius:10px;
-    box-shadow:0 0 10px rgba(0,0,0,0.5);
-    font-size:18px;
-    text-align:center;
-    max-width:90%;
-    z-index:10;
-  }
+    html, body {
+        margin: 0;
+        padding: 0;
+        background: #1c1c1c;
+        touch-action: none;
+        overflow: hidden;
+        user-select: none;
+        height: 100%;
+        width: 100%;
+    }
+
+    #hint {
+        color: white;
+        text-align: center;
+        font-size: 18px;
+        padding: 8px;
+        background: #2a2a2a;
+        font-family: sans-serif;
+    }
+
+    #game-container {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        width: 100%;
+    }
+
+    canvas {
+        background: #3a3a3a;
+        display: block;
+        border: 3px solid #202020;
+        border-radius: 8px;
+        image-rendering: pixelated;
+    }
+
+    #popup {
+        display: none;
+        position: fixed;
+        top: 50%; left: 50%;
+        transform: translate(-50%, -50%);
+        background: #ffffff;
+        padding: 30px;
+        font-size: 22px;
+        text-align: center;
+        border-radius: 15px;
+        width: 80%;
+        max-width: 400px;
+        z-index: 99;
+        font-family: sans-serif;
+        box-shadow: 0 0 20px rgba(0,0,0,0.5);
+    }
 </style>
 </head>
-<body>
 
-<div id="hint">Einmal tippen für Drehung</div>
-<canvas id="game" tabindex="0"></canvas>
+<body>
+<div id="hint">👉 Tipp auf den Bildschirm = drehen | 👉 Nach unten drücken = sofort ablegen</div>
+<div id="game-container"><canvas id="game"></canvas></div>
+
 <div id="popup">
-  Super, alle Gepäckstücke sind verstaut<br>
-Auch wenn nicht ganz so perfekt ;)<br><br>
-Jetzt kann es losgehen.<br><br>
-  Begib dich zur Boardingtreppe bei:<br>
-  N 52° 31.XXX und E13° 31.YYY
+    <b>Super, alle Gepäckstücke sind verstaut, jetzt kann es losgehen!</b><br><br>
+    Begib dich zur Boardingtreppe bei:<br><br>
+    <b>N 52° 31.XXX<br>E 13° 31.YYY</b>
 </div>
 
 <script>
-const canvas = document.getElementById('game');
-canvas.focus();
-const ctx = canvas.getContext('2d');
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+const popup = document.getElementById("popup");
+const hint = document.getElementById("hint");
 
-let scale, rows, cols, grid;
-function resizeCanvas(){
-  canvas.width = Math.min(window.innerWidth*0.9, 350);
-  canvas.height = Math.min(window.innerHeight*0.8, 500);
-  scale = Math.floor(canvas.width / 12);
-  rows = Math.floor(canvas.height / scale);
-  cols = 12;
-  grid = Array.from({length: rows}, () => Array(cols).fill(0));
-}
-resizeCanvas();
-window.addEventListener('resize', resizeCanvas);
+let cols = 10;
+let rows = 20;
+let scale = 30;
 
-// Blöcke
+let grid = [];
+let currentPiece = null;
+let dropInterval = 500;
+let lastDrop = 0;
+let gameOver = false;
+
+// ★ Kofferfarben
+const luggageColors = ["#c77b30", "#a0522d", "#8b5a2b", "#d2b48c", "#b5651d"];
+
+// ★ verschiedene Kofferformen
 const pieces = [
-  [[1,1,1,1]], [[1,1],[1,1]], [[0,1,0],[1,1,1]], [[1,1,0],[0,1,1]], [[0,1,1],[1,1,0]]
+    [[1,1,1,1]],
+    [[1,1],[1,1]],
+    [[0,1,0],[1,1,1]],
+    [[1,0,0],[1,1,1]],
+    [[0,0,1],[1,1,1]],
+    [[1,1,0],[0,1,1]],
+    [[0,1,1],[1,1,0]]
 ];
 
-function randomPiece() { 
-  const shape = pieces[Math.floor(Math.random()*pieces.length)];
-  return {shape, x: Math.floor(cols/2 - shape[0].length/2), y: 0};
+function makeGrid() {
+    grid = Array.from({length: rows}, () => Array(cols).fill(0));
 }
 
-let current = randomPiece();
+function resizeCanvas() {
+    const availW = Math.floor(window.innerWidth * 0.98);
+    let availH;
 
-// Flugzeug
-let plane = {
-  x: canvas.width/2 - scale*3,
-  y: 10,
-  width: scale*6,
-  height: scale*2,
-  dir: 1
-};
-
-function drawPlane(){
-  // Körper
-  ctx.fillStyle = "#555";
-  ctx.fillRect(plane.x, plane.y, plane.width, plane.height);
-  // Nase
-  ctx.beginPath();
-  ctx.moveTo(plane.x + plane.width, plane.y);
-  ctx.lineTo(plane.x + plane.width + scale*0.5, plane.y + plane.height/2);
-  ctx.lineTo(plane.x + plane.width, plane.y + plane.height);
-  ctx.closePath();
-  ctx.fill();
-  // Flügel
-  ctx.fillStyle = "#444";
-  ctx.fillRect(plane.x + scale*1.5, plane.y - scale*0.5, scale*3, scale*0.5);
-  ctx.fillRect(plane.x + scale*1.5, plane.y + plane.height, scale*3, scale*0.5);
-  // Leitwerk
-  ctx.fillStyle = "#666";
-  ctx.fillRect(plane.x, plane.y - scale*0.3, scale*0.5, scale*0.3);
-}
-
-function updatePlane(){
-  plane.x += plane.dir*1; 
-  if(plane.x < 0 || plane.x + plane.width > canvas.width) plane.dir *= -1;
-}
-
-// Zeichnen Spielfeld + Koffer
-function draw(){
-  ctx.clearRect(0,0,canvas.width,canvas.height);
-  // Flugzeug hinten
-  drawPlane();
-  // Koffer im Feld
-  for(let r=0;r<rows;r++){
-    for(let c=0;c<cols;c++){
-      if(grid[r][c]) drawLuggage(c*scale,r*scale,"orange");
+    // Handy?
+    if (/Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent)) {
+        availH = Math.floor(window.innerHeight - (hint.offsetHeight + 20));
+    } else {
+        // Desktop Mindesthöhe
+        availH = Math.floor(window.innerHeight * 0.90);
     }
-  }
-  // Aktuelles Stück
-  for(let r=0;r<current.shape.length;r++){
-    for(let c=0;c<current.shape[r].length;c++){
-      if(current.shape[r][c]){
-        const colors = ["#FF5733","#33FF57","#3357FF","#F3FF33","#FF33F6"];
-        const color = colors[pieces.indexOf(current.shape) % colors.length] || "#FF0000";
-        drawLuggage((current.x+c)*scale,(current.y+r)*scale,color);
-      }
-    }
-  }
+
+    scale = Math.floor(availW / cols);
+    if (scale < 20) scale = 20;
+
+    rows = Math.floor(availH / scale);
+    if (rows < 16) rows = 16;
+
+    canvas.width = cols * scale;
+    canvas.height = rows * scale;
+
+    makeGrid();
 }
 
-// Kofferblöcke mit Griff, Linien & Rollen
+function spawnPiece() {
+    const shape = JSON.parse(JSON.stringify(pieces[Math.floor(Math.random()*pieces.length)]));
+    currentPiece = {
+        shape,
+        x: Math.floor(cols/2) - 1,
+        y: 0,
+        color: luggageColors[Math.floor(Math.random()*luggageColors.length)]
+    };
+}
+
+function rotate(piece) {
+    const newShape = piece.shape[0].map((_,i)=>
+        piece.shape.map(row=>row[i]).reverse()
+    );
+    return newShape;
+}
+
+function collide() {
+    for (let y=0; y<currentPiece.shape.length; y++){
+        for (let x=0; x<currentPiece.shape[y].length; x++){
+            if (currentPiece.shape[y][x] === 1) {
+                let px = currentPiece.x + x;
+                let py = currentPiece.y + y;
+                if (px < 0 || px >= cols || py >= rows) return true;
+                if (py >= 0 && grid[py][px] !== 0) return true;
+            }
+        }
+    }
+    return false;
+}
+
+function mergePiece() {
+    for (let y=0; y<currentPiece.shape.length; y++){
+        for (let x=0; x<currentPiece.shape[y].length; x++){
+            if (currentPiece.shape[y][x] === 1){
+                grid[currentPiece.y + y][currentPiece.x + x] = currentPiece.color;
+            }
+        }
+    }
+}
+
+function hardDrop() {
+    while (!collide()) {
+        currentPiece.y++;
+    }
+    currentPiece.y--; 
+    mergePiece();
+    spawnPiece();
+}
+
+function update(time=0) {
+    if (gameOver) return;
+
+    if (time - lastDrop > dropInterval) {
+        currentPiece.y++;
+        if (collide()) {
+            currentPiece.y--;
+            mergePiece();
+            spawnPiece();
+        }
+        lastDrop = time;
+    }
+
+    draw();
+    requestAnimationFrame(update);
+}
+
+function draw() {
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+
+    // ★ Gepäckraum-Optik
+    ctx.fillStyle = "#2d2d2d";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // leichte Linien
+    ctx.strokeStyle = "rgba(255,255,255,0.06)";
+    for (let x=0; x<=cols; x++){
+        ctx.beginPath();
+        ctx.moveTo(x*scale,0);
+        ctx.lineTo(x*scale,canvas.height);
+        ctx.stroke();
+    }
+    for (let y=0; y<=rows; y++){
+        ctx.beginPath();
+        ctx.moveTo(0,y*scale);
+        ctx.lineTo(canvas.width,y*scale);
+        ctx.stroke();
+    }
+
+    // ★ Koffer im Grid
+    for (let y=0; y<rows; y++){
+        for (let x=0; x<cols; x++){
+            if (grid[y][x] !== 0){
+                drawLuggage(x*scale, y*scale, grid[y][x]);
+            }
+        }
+    }
+
+    // ★ aktueller Koffer
+    for (let y=0; y<currentPiece.shape.length; y++){
+        for (let x=0; x<currentPiece.shape[y].length; x++){
+            if (currentPiece.shape[y][x] === 1){
+                drawLuggage(
+                    (currentPiece.x + x)*scale,
+                    (currentPiece.y + y)*scale,
+                    currentPiece.color
+                );
+            }
+        }
+    }
+
+    // ★ Spielfeldbegrenzungen
+    ctx.strokeStyle = "#111";
+    ctx.lineWidth = 4;
+
+    ctx.strokeRect(0,0,canvas.width,canvas.height);
+}
+
 function drawLuggage(x,y,color){
-  const radius = 6;
-  // Grundkörper
-  ctx.fillStyle = color;
-  ctx.beginPath();
-  ctx.moveTo(x + radius, y);
-  ctx.lineTo(x + scale - radius, y);
-  ctx.quadraticCurveTo(x + scale, y, x + scale, y + radius);
-  ctx.lineTo(x + scale, y + scale - radius);
-  ctx.quadraticCurveTo(x + scale, y + scale, x + scale - radius, y + scale);
-  ctx.lineTo(x + radius, y + scale);
-  ctx.quadraticCurveTo(x, y + scale, x, y + scale - radius);
-  ctx.lineTo(x, y + radius);
-  ctx.quadraticCurveTo(x, y, x + radius, y);
-  ctx.fill();
-  // Kanten leicht abdunkeln
-  ctx.strokeStyle = "rgba(0,0,0,0.3)";
-  ctx.lineWidth = 2;
-  ctx.stroke();
-  // Griff oben
-  ctx.fillStyle = "#555";
-  ctx.fillRect(x + scale*0.3, y + scale*0.1, scale*0.4, scale*0.1);
-  // Linien Koffer
-  ctx.strokeStyle = "#333";
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.moveTo(x + scale*0.15, y + scale*0.35);
-  ctx.lineTo(x + scale*0.85, y + scale*0.35);
-  ctx.moveTo(x + scale*0.15, y + scale*0.65);
-  ctx.lineTo(x + scale*0.85, y + scale*0.65);
-  ctx.stroke();
-  // Rollen unten
-  ctx.fillStyle = "#222";
-  ctx.beginPath();
-  ctx.arc(x + scale*0.2, y + scale*0.95, scale*0.05, 0, 2*Math.PI);
-  ctx.arc(x + scale*0.8, y + scale*0.95, scale*0.05, 0, 2*Math.PI);
-  ctx.fill();
+    ctx.fillStyle = color;
+    ctx.fillRect(x+2,y+2,scale-4,scale-4);
+    ctx.strokeStyle = "#000";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(x+2,y+2,scale-4,scale-4);
 }
 
-// Kollision
-function collide(){
-  for(let r=0;r<current.shape.length;r++){
-    for(let c=0;c<current.shape[r].length;c++){
-      if(current.shape[r][c] && (grid[current.y+r] && grid[current.y+r][current.x+c]) !== 0) return true;
+// Eingaben
+document.addEventListener("keydown", e =>{
+    if (e.key === "ArrowLeft"){
+        currentPiece.x--;
+        if (collide()) currentPiece.x++;
     }
-  }
-  return false;
-}
-
-function merge(){
-  for(let r=0;r<current.shape.length;r++){
-    for(let c=0;c<current.shape[r].length;c++){
-      if(current.shape[r][c]) grid[current.y+r][current.x+c]=1;
+    if (e.key === "ArrowRight"){
+        currentPiece.x++;
+        if (collide()) currentPiece.x--;
     }
-  }
-}
-
-function sweep(){
-  for(let r=rows-1;r>=0;r--){
-    if(grid[r].every(cell=>cell!==0)){
-      grid.splice(r,1);
-      grid.unshift(Array(cols).fill(0));
+    if (e.key === "ArrowUp"){
+        let old = currentPiece.shape;
+        currentPiece.shape = rotate(currentPiece);
+        if (collide()) currentPiece.shape = old;
     }
-  }
-}
-
-function rotate(piece){
-  const shape = piece.shape;
-  const n = shape.length;
-  const m = shape[0].length;
-  const newShape = [];
-  for(let c=0;c<m;c++){
-    newShape[c]=[];
-    for(let r=n-1;r>=0;r--){
-      newShape[c][n-1-r]=shape[r][c];
+    if (e.key === "ArrowDown"){
+        hardDrop();
     }
-  }
-  piece.shape = newShape;
-  if(collide()) piece.shape=shape;
-}
-
-// Tastatur
-document.addEventListener('keydown', e=>{
-  canvas.focus();
-  if(e.key==='ArrowLeft'){ current.x--; if(collide()) current.x++; }
-  if(e.key==='ArrowRight'){ current.x++; if(collide()) current.x--; }
-  if(e.key==='ArrowDown'){ current.y++; if(collide()){ current.y--; merge(); current = randomPiece(); sweep(); } }
-  if(e.key==='ArrowUp'){ rotate(current); }
 });
 
-// Touch
-let touchStartX=0, touchStartY=0;
-canvas.addEventListener('touchstart', e=>{
-  const touch=e.touches[0];
-  touchStartX=touch.clientX;
-  touchStartY=touch.clientY;
-});
-canvas.addEventListener('touchend', e=>{
-  const touch=e.changedTouches[0];
-  const dx=touch.clientX-touchStartX;
-  const dy=touch.clientY-touchStartY;
-  if(Math.abs(dx)<10 && Math.abs(dy)<10){ rotate(current); return; }
-  if(Math.abs(dx)>Math.abs(dy)){
-    if(dx>20){ current.x++; if(collide()) current.x--; }
-    else if(dx<-20){ current.x--; if(collide()) current.x++; }
-  } else {
-    if(dy>20){ current.y++; if(collide()){ current.y--; merge(); current = randomPiece(); sweep(); } }
-  }
+canvas.addEventListener("pointerdown", ()=>{
+    let old = currentPiece.shape;
+    currentPiece.shape = rotate(currentPiece);
+    if (collide()) currentPiece.shape = old;
 });
 
-// Spiel-Loop
-function update(){
-  updatePlane();
-  current.y++;
-  if(collide()){ current.y--; merge(); current=randomPiece(); sweep(); }
-  draw();
-}
-let gameInterval=setInterval(update,500);
+// Start
+resizeCanvas();
+spawnPiece();
+requestAnimationFrame(update);
 
-// 1-Minuten-Popup
+// Nach 60 Sekunden stoppen
 setTimeout(()=>{
-  clearInterval(gameInterval);
-  document.getElementById("popup").style.display="block";
-},1*60*1000);
+    gameOver = true;
+    popup.style.display = "block";
+}, 60000);
 
-document.getElementById("popup").addEventListener("click", ()=>{
-  document.getElementById("popup").style.display="none";
-});
+window.addEventListener("resize", resizeCanvas);
 </script>
 </body>
 </html>
