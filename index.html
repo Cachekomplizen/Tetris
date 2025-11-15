@@ -5,11 +5,50 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <title>Gepäck-Tetris</title>
 <style>
-html, body {margin:0; padding:0; height:100%; background:#1e1e1e; font-family:sans-serif; overflow:hidden;}
-#hint {color:white; text-align:center; padding:8px; background:#333; font-size:16px;}
-#wrap {width:100%; height:100%; display:flex; justify-content:center; align-items:center;}
-canvas {touch-action:none; background:#222; border-radius:10px; display:block;}
-#popup {display:none; position:fixed; left:50%; top:50%; transform:translate(-50%,-50%); background:white; padding:20px; border-radius:12px; font-size:18px; text-align:center;}
+html, body {
+  margin:0;
+  padding:0;
+  height:100%;
+  background: url('https://media.istockphoto.com/id/1440975206/de/foto/graustufenaufnahme-des-frachtraums-eines-flugzeugs.jpg?s=612x612&w=0&k=20&c=zHbbYiv35OtqRe7T7EEuxIQeko2mkwpk-DsX9b8Z2gM=') center center / cover no-repeat;
+  font-family:sans-serif;
+  overflow:hidden;
+}
+#hint {
+  color:white;
+  text-align:center;
+  padding:8px;
+  background:rgba(0,0,0,0.6);
+  font-size:16px;
+  position:fixed;
+  width:100%;
+  z-index:10;
+}
+#wrap {
+  width:100%;
+  height:100%;
+  display:flex;
+  justify-content:center;
+  align-items:center;
+}
+canvas {
+  touch-action:none;
+  display:block;
+  background: transparent; /* wichtig, damit Hintergrund sichtbar bleibt */
+  border-radius:10px;
+}
+#popup {
+  display:none;
+  position:fixed;
+  left:50%;
+  top:50%;
+  transform:translate(-50%,-50%);
+  background:white;
+  padding:20px;
+  border-radius:12px;
+  font-size:18px;
+  text-align:center;
+  z-index:20;
+}
 </style>
 </head>
 <body>
@@ -17,7 +56,7 @@ canvas {touch-action:none; background:#222; border-radius:10px; display:block;}
 <div id="wrap"><canvas id="game" tabindex="0"></canvas></div>
 <div id="popup">
   Super, alle Gepäckstücke sind verstaut!<br><br>
-  Begib dich zur Boardingtreppe bei:<br><br>
+  Begib dich zur Boardingtreppe:<br><br>
   <b>N 52° 31.XXX</b><br>
   <b>E 13° 31.YYY</b>
 </div>
@@ -28,7 +67,6 @@ const ctx = canvas.getContext("2d");
 let cols = 10, rows = 20, scale = 32;
 let grid=[], currentPiece=null, lastDrop=0, dropInterval=550;
 
-// Kofferformen und Farben
 const shapes=[
   [[1,1,1,1]],
   [[1,1],[1,1]],
@@ -38,7 +76,6 @@ const shapes=[
 ];
 const colors=["#FF8A3C","#4AC6FF","#FFE047","#FF3CAC","#53E37B"];
 
-// Resize für Vollbild
 function resize(){
   const availW = window.innerWidth*0.95;
   const availH = window.innerHeight*0.88;
@@ -53,13 +90,11 @@ function resize(){
 resize();
 window.addEventListener("resize", resize);
 
-// Neue Pieces
 function newPiece(){
   const s=JSON.parse(JSON.stringify(shapes[Math.floor(Math.random()*shapes.length)]));
   return {shape:s, color:colors[Math.floor(Math.random()*colors.length)], x:Math.floor(cols/2 - s[0].length/2), y:0};
 }
 
-// Kollisionscheck
 function collide(){
   for(let r=0;r<currentPiece.shape.length;r++){
     for(let c=0;c<currentPiece.shape[r].length;c++){
@@ -72,7 +107,6 @@ function collide(){
   return false;
 }
 
-// Merge Piece
 function merge(){
   for(let r=0;r<currentPiece.shape.length;r++){
     for(let c=0;c<currentPiece.shape[r].length;c++){
@@ -81,14 +115,12 @@ function merge(){
   }
 }
 
-// Reihen löschen
 function sweep(){
   for(let r=rows-1;r>=0;r--){
     if(grid[r].every(x=>x)){ grid.splice(r,1); grid.unshift(Array(cols).fill(0)); }
   }
 }
 
-// Drehung
 function rotate(piece){
   const old=piece.shape;
   const n=old.length, m=old[0].length;
@@ -101,7 +133,6 @@ function rotate(piece){
   if(collide()) piece.shape=old;
 }
 
-// Hard Drop
 function hardDrop(){
   while(!collide()) currentPiece.y++;
   currentPiece.y--;
@@ -111,7 +142,7 @@ function hardDrop(){
   if(collide()) grid=Array.from({length:rows},()=>Array(cols).fill(0));
 }
 
-// === drawLuggage() für realistische Koffer ===
+// === Koffer zeichnen ===
 function drawLuggage(x,y,color){
   const r = scale*0.15;
   ctx.fillStyle=color;
@@ -136,9 +167,8 @@ function drawLuggage(x,y,color){
   ctx.fill();
 }
 
-// Draw Loop
 function draw(){
-  ctx.fillStyle="#2b2b2b"; ctx.fillRect(0,0,canvas.width,canvas.height);
+  ctx.clearRect(0,0,canvas.width,canvas.height);
   for(let r=0;r<rows;r++){ for(let c=0;c<cols;c++){ if(grid[r][c]) drawLuggage(c*scale,r*scale,grid[r][c]); } }
   if(currentPiece){
     for(let r=0;r<currentPiece.shape.length;r++){
@@ -149,7 +179,6 @@ function draw(){
   }
 }
 
-// Tastatur
 document.addEventListener("keydown",e=>{
   if(e.key==="ArrowLeft"){ currentPiece.x--; if(collide()) currentPiece.x++; }
   if(e.key==="ArrowRight"){ currentPiece.x++; if(collide()) currentPiece.x--; }
@@ -157,7 +186,6 @@ document.addEventListener("keydown",e=>{
   if(e.key==="ArrowDown"){ hardDrop(); }
 });
 
-// Touch/Pointer
 let sx=0,sy=0,st=0;
 canvas.addEventListener("pointerdown",e=>{ sx=e.clientX; sy=e.clientY; st=Date.now(); });
 canvas.addEventListener("pointerup",e=>{
@@ -169,7 +197,6 @@ canvas.addEventListener("pointerup",e=>{
   } else if(dy>20){ hardDrop(); }
 });
 
-// Spiel-Loop
 function loop(ts){
   if(!currentPiece) currentPiece=newPiece();
   if(ts-lastDrop>dropInterval){
@@ -183,7 +210,6 @@ function loop(ts){
 currentPiece=newPiece();
 requestAnimationFrame(loop);
 
-// 1-Minuten-Popup
 setTimeout(()=>{ document.getElementById("popup").style.display="block"; },60000);
 
 </script>
