@@ -2,10 +2,22 @@
 <html lang="de">
 <head>
 <meta charset="UTF-8">
-<title>Gepäck-Tetris (Desktop + Touch)</title>
+<title>Gepäck-Tetris Flughafen Edition</title>
 <style>
-  body { margin:0; display:flex; justify-content:center; align-items:center; height:100vh; background:#f0f0f0; font-family:sans-serif; }
-  canvas { background:#222; display:block; }
+  body { margin:0; display:flex; justify-content:center; align-items:center; height:100vh; background:#87ceeb; font-family:sans-serif; flex-direction:column; }
+  canvas { background:#222; display:block; touch-action: none; margin-top:40px; }
+  #hint {
+    position:fixed;
+    top:10px;
+    left:50%;
+    transform:translateX(-50%);
+    background:rgba(255,255,255,0.8);
+    padding:5px 10px;
+    border-radius:5px;
+    font-size:16px;
+    font-weight:bold;
+    z-index:10;
+  }
   #popup {
     display:none;
     position:fixed;
@@ -24,23 +36,27 @@
 </style>
 </head>
 <body>
+
+<div id="hint">Einmal tippen für Drehung</div>
 <canvas id="game" tabindex="0"></canvas>
 <div id="popup">
-  Super, alle Gepäckstücke sind verstaut, jetzt kann es losgehen.<br>
+  Super, alle Gepäckstücke sind verstaut<br>
+Auch wenn nicht ganz so perfekt ;)<br><br>
+Jetzt kann es losgehen.<br><br>
   Begib dich zur Boardingtreppe bei:<br>
   N 52° 31.XXX und E13° 31.YYY
 </div>
 
 <script>
 const canvas = document.getElementById('game');
-canvas.focus(); // Fokus für Tastatur
+canvas.focus();
 const ctx = canvas.getContext('2d');
 
 let scale, rows, cols, grid;
 function resizeCanvas(){
-  canvas.width = Math.min(window.innerWidth*0.9, 300);
+  canvas.width = Math.min(window.innerWidth*0.9, 350);
   canvas.height = Math.min(window.innerHeight*0.8, 500);
-  scale = Math.floor(canvas.width / 12); // ca. 12 Blöcke breit
+  scale = Math.floor(canvas.width / 12);
   rows = Math.floor(canvas.height / scale);
   cols = 12;
   grid = Array.from({length: rows}, () => Array(cols).fill(0));
@@ -60,13 +76,52 @@ function randomPiece() {
 
 let current = randomPiece();
 
+// Flugzeug
+let plane = {
+  x: canvas.width/2 - scale*3,
+  y: 10,
+  width: scale*6,
+  height: scale*2,
+  dir: 1
+};
+
+function drawPlane(){
+  // Körper
+  ctx.fillStyle = "#555";
+  ctx.fillRect(plane.x, plane.y, plane.width, plane.height);
+  // Nase
+  ctx.beginPath();
+  ctx.moveTo(plane.x + plane.width, plane.y);
+  ctx.lineTo(plane.x + plane.width + scale*0.5, plane.y + plane.height/2);
+  ctx.lineTo(plane.x + plane.width, plane.y + plane.height);
+  ctx.closePath();
+  ctx.fill();
+  // Flügel
+  ctx.fillStyle = "#444";
+  ctx.fillRect(plane.x + scale*1.5, plane.y - scale*0.5, scale*3, scale*0.5);
+  ctx.fillRect(plane.x + scale*1.5, plane.y + plane.height, scale*3, scale*0.5);
+  // Leitwerk
+  ctx.fillStyle = "#666";
+  ctx.fillRect(plane.x, plane.y - scale*0.3, scale*0.5, scale*0.3);
+}
+
+function updatePlane(){
+  plane.x += plane.dir*1; 
+  if(plane.x < 0 || plane.x + plane.width > canvas.width) plane.dir *= -1;
+}
+
+// Zeichnen Spielfeld + Koffer
 function draw(){
   ctx.clearRect(0,0,canvas.width,canvas.height);
+  // Flugzeug hinten
+  drawPlane();
+  // Koffer im Feld
   for(let r=0;r<rows;r++){
     for(let c=0;c<cols;c++){
       if(grid[r][c]) drawLuggage(c*scale,r*scale,"orange");
     }
   }
+  // Aktuelles Stück
   for(let r=0;r<current.shape.length;r++){
     for(let c=0;c<current.shape[r].length;c++){
       if(current.shape[r][c]){
@@ -78,8 +133,10 @@ function draw(){
   }
 }
 
+// Kofferblöcke mit Griff, Linien & Rollen
 function drawLuggage(x,y,color){
-  const radius = 4;
+  const radius = 6;
+  // Grundkörper
   ctx.fillStyle = color;
   ctx.beginPath();
   ctx.moveTo(x + radius, y);
@@ -92,14 +149,31 @@ function drawLuggage(x,y,color){
   ctx.lineTo(x, y + radius);
   ctx.quadraticCurveTo(x, y, x + radius, y);
   ctx.fill();
+  // Kanten leicht abdunkeln
+  ctx.strokeStyle = "rgba(0,0,0,0.3)";
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  // Griff oben
+  ctx.fillStyle = "#555";
+  ctx.fillRect(x + scale*0.3, y + scale*0.1, scale*0.4, scale*0.1);
+  // Linien Koffer
   ctx.strokeStyle = "#333";
   ctx.lineWidth = 1;
   ctx.beginPath();
-  ctx.moveTo(x + scale*0.25, y + scale*0.2);
-  ctx.lineTo(x + scale*0.75, y + scale*0.2);
+  ctx.moveTo(x + scale*0.15, y + scale*0.35);
+  ctx.lineTo(x + scale*0.85, y + scale*0.35);
+  ctx.moveTo(x + scale*0.15, y + scale*0.65);
+  ctx.lineTo(x + scale*0.85, y + scale*0.65);
   ctx.stroke();
+  // Rollen unten
+  ctx.fillStyle = "#222";
+  ctx.beginPath();
+  ctx.arc(x + scale*0.2, y + scale*0.95, scale*0.05, 0, 2*Math.PI);
+  ctx.arc(x + scale*0.8, y + scale*0.95, scale*0.05, 0, 2*Math.PI);
+  ctx.fill();
 }
 
+// Kollision
 function collide(){
   for(let r=0;r<current.shape.length;r++){
     for(let c=0;c<current.shape[r].length;c++){
@@ -141,7 +215,7 @@ function rotate(piece){
   if(collide()) piece.shape=shape;
 }
 
-// Tastatursteuerung
+// Tastatur
 document.addEventListener('keydown', e=>{
   canvas.focus();
   if(e.key==='ArrowLeft'){ current.x--; if(collide()) current.x++; }
@@ -150,7 +224,7 @@ document.addEventListener('keydown', e=>{
   if(e.key==='ArrowUp'){ rotate(current); }
 });
 
-// Touchsteuerung
+// Touch
 let touchStartX=0, touchStartY=0;
 canvas.addEventListener('touchstart', e=>{
   const touch=e.touches[0];
@@ -172,6 +246,7 @@ canvas.addEventListener('touchend', e=>{
 
 // Spiel-Loop
 function update(){
+  updatePlane();
   current.y++;
   if(collide()){ current.y--; merge(); current=randomPiece(); sweep(); }
   draw();
