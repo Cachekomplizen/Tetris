@@ -1,296 +1,331 @@
 <!DOCTYPE html>
 <html lang="de">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Koffer-Tetris</title>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+<title>Gepäck-Tetris (Touch fix)</title>
 <style>
-    html, body {
-        margin: 0;
-        padding: 0;
-        background: #1c1c1c;
-        touch-action: none;
-        overflow: hidden;
-        user-select: none;
-        height: 100%;
-        width: 100%;
-    }
-
-    #hint {
-        color: white;
-        text-align: center;
-        font-size: 18px;
-        padding: 8px;
-        background: #2a2a2a;
-        font-family: sans-serif;
-    }
-
-    #game-container {
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        width: 100%;
-    }
-
-    canvas {
-        background: #3a3a3a;
-        display: block;
-        border: 3px solid #202020;
-        border-radius: 8px;
-        image-rendering: pixelated;
-    }
-
-    #popup {
-        display: none;
-        position: fixed;
-        top: 50%; left: 50%;
-        transform: translate(-50%, -50%);
-        background: #ffffff;
-        padding: 30px;
-        font-size: 22px;
-        text-align: center;
-        border-radius: 15px;
-        width: 80%;
-        max-width: 400px;
-        z-index: 99;
-        font-family: sans-serif;
-        box-shadow: 0 0 20px rgba(0,0,0,0.5);
-    }
+  html,body{height:100svh;margin:0;padding:0;overflow:hidden;background:#1c1c1c;font-family:sans-serif}
+  #hint{color:#fff;text-align:center;padding:8px;background:#2a2a2a}
+  #game-wrap{display:flex;justify-content:center;align-items:center;width:100%}
+  canvas{touch-action:none;border-radius:8px;display:block;background:#2f2f2f}
+  #popup{display:none;position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);background:#fff;padding:20px;border-radius:10px;z-index:20;text-align:center}
 </style>
 </head>
-
 <body>
-<div id="hint">👉 Tipp auf den Bildschirm = drehen | 👉 Nach unten drücken = sofort ablegen</div>
-<div id="game-container"><canvas id="game"></canvas></div>
-
+<div id="hint">Tippen = drehen · Wischen links/rechts = bewegen · Wischen runter = direkt ablegen</div>
+<div id="game-wrap"><canvas id="game" tabindex="0"></canvas></div>
 <div id="popup">
-    <b>Super, alle Gepäckstücke sind verstaut, jetzt kann es losgehen!</b><br><br>
-    Begib dich zur Boardingtreppe bei:<br><br>
-    <b>N 52° 31.XXX<br>E 13° 31.YYY</b>
+  <strong>Super, alle Gepäckstücke sind verstaut!</strong><br><br>
+  Begib dich zur Boardingtreppe bei:<br>
+  <b>N 52° 31.XXX</b> und <b>E 13° 31.YYY</b>
 </div>
 
 <script>
-const canvas = document.getElementById("game");
-const ctx = canvas.getContext("2d");
-const popup = document.getElementById("popup");
-const hint = document.getElementById("hint");
+/* ---------- Einstellungen ---------- */
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+const popup = document.getElementById('popup');
+const hint = document.getElementById('hint');
 
-let cols = 10;
-let rows = 20;
-let scale = 30;
-
+let cols = 10;                // Spalten
+let rows = 20;                // Zeilen (wird in resize ggf. angepasst)
+let scale = 32;               // Pixel pro Zelle (wird in resize neu berechnet)
 let grid = [];
 let currentPiece = null;
 let dropInterval = 500;
-let lastDrop = 0;
+let lastDropTime = 0;
 let gameOver = false;
 
-// ★ Kofferfarben
-const luggageColors = ["#c77b30", "#a0522d", "#8b5a2b", "#d2b48c", "#b5651d"];
-
-// ★ verschiedene Kofferformen
+/* Kofferfarben und Formen */
+const luggageColors = ["#FF6B4A","#4AC6FF","#FFD241","#FF3FB0","#50E37F"];
 const pieces = [
-    [[1,1,1,1]],
-    [[1,1],[1,1]],
-    [[0,1,0],[1,1,1]],
-    [[1,0,0],[1,1,1]],
-    [[0,0,1],[1,1,1]],
-    [[1,1,0],[0,1,1]],
-    [[0,1,1],[1,1,0]]
+  [[1,1,1,1]],
+  [[1,1],[1,1]],
+  [[0,1,0],[1,1,1]],
+  [[1,1,0],[0,1,1]],
+  [[0,1,1],[1,1,0]]
 ];
 
-function makeGrid() {
-    grid = Array.from({length: rows}, () => Array(cols).fill(0));
+/* ---------- Hilfsfunktionen ---------- */
+function makeGrid(){
+  grid = Array.from({length: rows}, ()=>Array(cols).fill(0));
 }
 
-function resizeCanvas() {
-    const availW = Math.floor(window.innerWidth * 0.98);
-    let availH;
+function resize() {
+  // verfügbare Breite/Höhe berechnen
+  const availW = Math.floor(window.innerWidth * 0.98);
+  let availH;
+  if (/Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent)) {
+    availH = Math.floor(window.innerHeight - (hint.offsetHeight + 20));
+  } else {
+    availH = Math.floor(window.innerHeight * 0.88);
+  }
 
-    // Handy?
-    if (/Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent)) {
-        availH = Math.floor(window.innerHeight - (hint.offsetHeight + 20));
-    } else {
-        // Desktop Mindesthöhe
-        availH = Math.floor(window.innerHeight * 0.90);
+  // scale so berechnen, dass cols passen
+  scale = Math.floor(availW / cols);
+  if (scale < 20) scale = 20;
+
+  rows = Math.floor(availH / scale);
+  if (rows < 12) rows = 12;
+
+  canvas.width = cols * scale;
+  canvas.height = rows * scale;
+
+  makeGrid();
+  canvas.style.width = canvas.width + 'px';
+  canvas.style.height = canvas.height + 'px';
+
+  // Fokus für Tastatur
+  canvas.focus();
+}
+
+/* ---------- Teil-Logik: Spawn / Collide / Merge / Sweep / Rotate ---------- */
+function randomPiece(){
+  const shape = JSON.parse(JSON.stringify(pieces[Math.floor(Math.random()*pieces.length)]));
+  return {
+    shape,
+    x: Math.floor((cols - shape[0].length)/2),
+    y: 0,
+    color: luggageColors[Math.floor(Math.random()*luggageColors.length)]
+  };
+}
+
+function collide(){
+  for(let r=0;r<currentPiece.shape.length;r++){
+    for(let c=0;c<currentPiece.shape[r].length;c++){
+      if(currentPiece.shape[r][c]){
+        const nx = currentPiece.x + c;
+        const ny = currentPiece.y + r;
+        if(nx < 0 || nx >= cols || ny >= rows) return true;
+        if(ny >= 0 && grid[ny][nx]) return true;
+      }
     }
+  }
+  return false;
+}
 
-    scale = Math.floor(availW / cols);
-    if (scale < 20) scale = 20;
+function mergePiece(){
+  for(let r=0;r<currentPiece.shape.length;r++){
+    for(let c=0;c<currentPiece.shape[r].length;c++){
+      if(currentPiece.shape[r][c]){
+        const gx = currentPiece.x + c;
+        const gy = currentPiece.y + r;
+        if(gy >= 0 && gy < rows && gx >=0 && gx < cols) grid[gy][gx] = currentPiece.color;
+      }
+    }
+  }
+}
 
-    rows = Math.floor(availH / scale);
-    if (rows < 16) rows = 16;
+function sweep(){
+  for(let r=rows-1;r>=0;r--){
+    if(grid[r].every(cell => cell !== 0)){
+      grid.splice(r,1);
+      grid.unshift(Array(cols).fill(0));
+    }
+  }
+}
 
-    canvas.width = cols * scale;
-    canvas.height = rows * scale;
+function rotatePiece(piece){
+  const old = piece.shape;
+  const n = old.length;
+  const m = old[0].length;
+  const rotated = [];
+  for(let c=0;c<m;c++){
+    rotated[c] = [];
+    for(let r=n-1;r>=0;r--){
+      rotated[c][n-1-r] = old[r][c];
+    }
+  }
+  piece.shape = rotated;
+  if(collide()) piece.shape = old;
+}
 
+/* ---------- Hard Drop (direkt ablegen) ---------- */
+function hardDrop(){
+  if(!currentPiece) return;
+  while(!collide()){
+    currentPiece.y++;
+  }
+  currentPiece.y--;
+  mergePiece();
+  sweep();
+  currentPiece = randomPiece();
+  // Falls neues Piece sofort kollidiert -> Game over (reseten wir hier einfach)
+  if(collide()){
+    // Reset grid and continue so player isn't stuck
     makeGrid();
+  }
 }
 
-function spawnPiece() {
-    const shape = JSON.parse(JSON.stringify(pieces[Math.floor(Math.random()*pieces.length)]));
-    currentPiece = {
-        shape,
-        x: Math.floor(cols/2) - 1,
-        y: 0,
-        color: luggageColors[Math.floor(Math.random()*luggageColors.length)]
-    };
+/* ---------- Zeichnen ---------- */
+function drawCell(x, y, color){
+  const pad = Math.max(2, Math.floor(scale*0.06));
+  ctx.fillStyle = color;
+  ctx.fillRect(x+pad, y+pad, scale-pad*2, scale-pad*2);
+  ctx.strokeStyle = "rgba(0,0,0,0.5)";
+  ctx.lineWidth = Math.max(1, Math.floor(scale*0.04));
+  ctx.strokeRect(x+pad, y+pad, scale-pad*2, scale-pad*2);
 }
 
-function rotate(piece) {
-    const newShape = piece.shape[0].map((_,i)=>
-        piece.shape.map(row=>row[i]).reverse()
-    );
-    return newShape;
-}
+function draw(){
+  // Hintergrund Gepäckraum
+  ctx.fillStyle = "#2d2d2d";
+  ctx.fillRect(0,0,canvas.width,canvas.height);
 
-function collide() {
-    for (let y=0; y<currentPiece.shape.length; y++){
-        for (let x=0; x<currentPiece.shape[y].length; x++){
-            if (currentPiece.shape[y][x] === 1) {
-                let px = currentPiece.x + x;
-                let py = currentPiece.y + y;
-                if (px < 0 || px >= cols || py >= rows) return true;
-                if (py >= 0 && grid[py][px] !== 0) return true;
-            }
+  // Gitter-Subtile (leicht)
+  ctx.strokeStyle = "rgba(255,255,255,0.03)";
+  ctx.lineWidth = 1;
+  for(let x=0;x<=cols;x++){
+    ctx.beginPath();
+    ctx.moveTo(x*scale,0); ctx.lineTo(x*scale,canvas.height); ctx.stroke();
+  }
+  for(let y=0;y<=rows;y++){
+    ctx.beginPath();
+    ctx.moveTo(0,y*scale); ctx.lineTo(canvas.width,y*scale); ctx.stroke();
+  }
+
+  // Gespeicherte Koffer
+  for(let r=0;r<rows;r++){
+    for(let c=0;c<cols;c++){
+      if(grid[r][c]){
+        drawCell(c*scale, r*scale, grid[r][c]);
+      }
+    }
+  }
+
+  // Aktuelles Piece
+  if(currentPiece){
+    for(let r=0;r<currentPiece.shape.length;r++){
+      for(let c=0;c<currentPiece.shape[r].length;c++){
+        if(currentPiece.shape[r][c]){
+          const px = (currentPiece.x + c) * scale;
+          const py = (currentPiece.y + r) * scale;
+          drawCell(px, py, currentPiece.color);
         }
+      }
     }
-    return false;
+  }
 }
 
-function mergePiece() {
-    for (let y=0; y<currentPiece.shape.length; y++){
-        for (let x=0; x<currentPiece.shape[y].length; x++){
-            if (currentPiece.shape[y][x] === 1){
-                grid[currentPiece.y + y][currentPiece.x + x] = currentPiece.color;
-            }
-        }
-    }
-}
-
-function hardDrop() {
-    while (!collide()) {
-        currentPiece.y++;
-    }
-    currentPiece.y--; 
-    mergePiece();
-    spawnPiece();
-}
-
-function update(time=0) {
-    if (gameOver) return;
-
-    if (time - lastDrop > dropInterval) {
-        currentPiece.y++;
-        if (collide()) {
-            currentPiece.y--;
-            mergePiece();
-            spawnPiece();
-        }
-        lastDrop = time;
-    }
-
-    draw();
-    requestAnimationFrame(update);
-}
-
-function draw() {
-    ctx.clearRect(0,0,canvas.width,canvas.height);
-
-    // ★ Gepäckraum-Optik
-    ctx.fillStyle = "#2d2d2d";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-    // leichte Linien
-    ctx.strokeStyle = "rgba(255,255,255,0.06)";
-    for (let x=0; x<=cols; x++){
-        ctx.beginPath();
-        ctx.moveTo(x*scale,0);
-        ctx.lineTo(x*scale,canvas.height);
-        ctx.stroke();
-    }
-    for (let y=0; y<=rows; y++){
-        ctx.beginPath();
-        ctx.moveTo(0,y*scale);
-        ctx.lineTo(canvas.width,y*scale);
-        ctx.stroke();
-    }
-
-    // ★ Koffer im Grid
-    for (let y=0; y<rows; y++){
-        for (let x=0; x<cols; x++){
-            if (grid[y][x] !== 0){
-                drawLuggage(x*scale, y*scale, grid[y][x]);
-            }
-        }
-    }
-
-    // ★ aktueller Koffer
-    for (let y=0; y<currentPiece.shape.length; y++){
-        for (let x=0; x<currentPiece.shape[y].length; x++){
-            if (currentPiece.shape[y][x] === 1){
-                drawLuggage(
-                    (currentPiece.x + x)*scale,
-                    (currentPiece.y + y)*scale,
-                    currentPiece.color
-                );
-            }
-        }
-    }
-
-    // ★ Spielfeldbegrenzungen
-    ctx.strokeStyle = "#111";
-    ctx.lineWidth = 4;
-
-    ctx.strokeRect(0,0,canvas.width,canvas.height);
-}
-
-function drawLuggage(x,y,color){
-    ctx.fillStyle = color;
-    ctx.fillRect(x+2,y+2,scale-4,scale-4);
-    ctx.strokeStyle = "#000";
-    ctx.lineWidth = 2;
-    ctx.strokeRect(x+2,y+2,scale-4,scale-4);
-}
-
-// Eingaben
-document.addEventListener("keydown", e =>{
-    if (e.key === "ArrowLeft"){
-        currentPiece.x--;
-        if (collide()) currentPiece.x++;
-    }
-    if (e.key === "ArrowRight"){
-        currentPiece.x++;
-        if (collide()) currentPiece.x--;
-    }
-    if (e.key === "ArrowUp"){
-        let old = currentPiece.shape;
-        currentPiece.shape = rotate(currentPiece);
-        if (collide()) currentPiece.shape = old;
-    }
-    if (e.key === "ArrowDown"){
-        hardDrop();
-    }
+/* ---------- Input: Tastatur (Desktop) ---------- */
+document.addEventListener('keydown', e=>{
+  if(!currentPiece) return;
+  if(e.key === "ArrowLeft"){
+    currentPiece.x--;
+    if(collide()) currentPiece.x++;
+  } else if(e.key === "ArrowRight"){
+    currentPiece.x++;
+    if(collide()) currentPiece.x--;
+  } else if(e.key === "ArrowUp"){
+    rotatePiece(currentPiece);
+  } else if(e.key === "ArrowDown"){
+    // Hard drop
+    hardDrop();
+  }
 });
 
-canvas.addEventListener("pointerdown", ()=>{
-    let old = currentPiece.shape;
-    currentPiece.shape = rotate(currentPiece);
-    if (collide()) currentPiece.shape = old;
+/* ---------- Input: Touch / Pointer (Mobile & Pointer-enabled devices) ---------- */
+/* We'll use pointer events - works for touch & stylus & mouse */
+let pStartX = 0, pStartY = 0, pStartTime = 0;
+let pointerActive = false;
+
+canvas.addEventListener('pointerdown', (ev) => {
+  pointerActive = true;
+  pStartX = ev.clientX;
+  pStartY = ev.clientY;
+  pStartTime = Date.now();
+  // capture so we get pointerup even if finger moves off canvas
+  canvas.setPointerCapture(ev.pointerId);
 });
 
-// Start
-resizeCanvas();
-spawnPiece();
-requestAnimationFrame(update);
+canvas.addEventListener('pointerup', (ev) => {
+  if(!pointerActive) return;
+  pointerActive = false;
+  canvas.releasePointerCapture(ev.pointerId);
 
-// Nach 60 Sekunden stoppen
-setTimeout(()=>{
+  const dx = ev.clientX - pStartX;
+  const dy = ev.clientY - pStartY;
+  const dt = Date.now() - pStartTime;
+
+  const absDx = Math.abs(dx), absDy = Math.abs(dy);
+
+  // Tap (short, small movement) => rotate
+  if (absDx < 10 && absDy < 10 && dt < 300) {
+    rotatePiece(currentPiece);
+    return;
+  }
+
+  // Horizontal swipe -> move
+  if (absDx > absDy && absDx > 20) {
+    if (dx > 0) {
+      currentPiece.x++;
+      if(collide()) currentPiece.x--;
+    } else {
+      currentPiece.x--;
+      if(collide()) currentPiece.x++;
+    }
+    return;
+  }
+
+  // Vertical swipe down -> hard drop
+  if (absDy > absDx && dy > 20) {
+    hardDrop();
+    return;
+  }
+});
+
+/* ---------- Game loop ---------- */
+function tick(timestamp){
+  if(!currentPiece) {
+    currentPiece = randomPiece();
+  }
+
+  if(!lastDropTime) lastDropTime = timestamp;
+  if(timestamp - lastDropTime > dropInterval){
+    currentPiece.y++;
+    if(collide()){
+      currentPiece.y--;
+      mergePiece();
+      sweep();
+      currentPiece = randomPiece();
+      // ensure if new piece collides immediately we clear so play continues
+      if(collide()){
+        makeGrid();
+      }
+    }
+    lastDropTime = timestamp;
+  }
+  draw();
+  if(!gameOver) requestAnimationFrame(tick);
+}
+
+/* ---------- Init ---------- */
+function start(){
+  resize();
+  makeGrid();
+  currentPiece = randomPiece();
+  requestAnimationFrame(tick);
+
+  // stop after 60s and show popup
+  setTimeout(()=>{
     gameOver = true;
-    popup.style.display = "block";
-}, 60000);
+    popup.style.display = 'block';
+  }, 60*1000);
+}
 
-window.addEventListener("resize", resizeCanvas);
+window.addEventListener('resize', () => {
+  resize();
+  // keep current piece within bounds if resized
+  if(currentPiece){
+    if(currentPiece.x + currentPiece.shape[0].length > cols){
+      currentPiece.x = Math.max(0, cols - currentPiece.shape[0].length);
+    }
+    if(currentPiece.y >= rows) currentPiece.y = rows - 1;
+  }
+});
+
+start();
 </script>
 </body>
 </html>
